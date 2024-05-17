@@ -12,6 +12,8 @@ const JoinPage = () => {
         <div className="warning">이미 사용중인 아이디 입니다.</div>
         <label for="name" style={{marginTop: "20px"}}>사용자명</label>
         <input id="name" type="text" />
+        <label for="email" style={{marginTop: "20px"}}>이메일</label>
+        <input id="email" type="text" />
         <label for="pw" style={{marginTop: "20px"}}>비밀번호</label>
         <input id="pw" type="password" />
         <div className="warning">비밀번호는 특수문자 포함 6자 이상으로 해주세요.</div>

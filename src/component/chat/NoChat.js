@@ -10,11 +10,11 @@ const BackgroundBlock = styled.div`
   align-items: center;
 `;
 
-const NoChat = (props) => {
+const NoChat = ({name}) => {
   return(
     <BackgroundBlock>
       <img src="discord.svg" alt="discord" width="200" height="200" />
-      <div style={{textAlign: "center", fontSize: "xx-large", marginTop: "20px"}}>{props.name}님 아직 서버가 없네요.<br/>서버를 추가하여 discord를 시작해보세요</div>
+      <div style={{textAlign: "center", fontSize: "xx-large", marginTop: "20px"}}>{name}님 아직 서버가 없네요.<br/>서버를 추가하여 discord를 시작해보세요</div>
     </BackgroundBlock>
   );
 }
