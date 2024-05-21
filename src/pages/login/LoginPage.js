@@ -17,9 +17,9 @@ const LoginPage = () => {
 
       if (response.status === 200) {
         console.log(response.data.token);
-        sessionStorage.setItem("token", response.data.token);
-        sessionStorage.setItem("nickname", response.data.nickname);
-        sessionStorage.setItem("username", response.data.username);
+        localStorage.setItem("token", response.data.token);
+        localStorage.setItem("nickname", response.data.nickname);
+        localStorage.setItem("username", response.data.username);
         naviagate("/");
       }
     } catch (err) {
@@ -30,6 +30,13 @@ const LoginPage = () => {
       }
     }
   };
+
+  const handleKeyPress = (event) => {
+    if (event.key === 'Enter') {
+      handleLogin();
+    }
+  };
+
   return (
     <AuthTemplate>
       <div style={{ display: "flex" }}>
@@ -38,9 +45,9 @@ const LoginPage = () => {
           <div className="text">다시 만난다니 너무 반가워요!</div>
           <div style={{marginTop: "30px"}}>
             <label for="id" onChange>아이디</label>
-            <input id="id" type="text" value={username} onChange={(e) => setUserame(e.target.value)} required/>
+            <input id="id" type="text" value={username} onChange={(e) => setUserame(e.target.value)} onKeyDown={(e) => handleKeyPress(e)} required/>
             <label for="pw" style={{marginTop: "10px"}}>비밀번호</label>
-            <input id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required/>
+            <input id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => handleKeyPress(e)} required/>
             {error === '존재하지 않는 유저입니다.' && <div className="warning">존재하지 않는 유저입니다.</div>}
             <div style={{display: 'flex', marginTop: "10px"}}>
               <div className="text">계정이 필요한가요?</div>
