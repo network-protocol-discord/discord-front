@@ -1,4 +1,5 @@
 import React from "react";
+import axios from "axios";
 import styled from "styled-components";
 
 const ChatHeader = styled.div`
@@ -8,6 +9,18 @@ const ChatHeader = styled.div`
   border-bottom: 1px grey solid;
   .title{
     font-size: x-large;
+  }
+  button{
+    background: #f2f3f5;
+    overflow: hidden;
+    cursor: pointer;
+    border: none;
+    img{
+      display: block;
+    }
+    &:hover{
+      background: #ebedef;
+    }
   }
 `;
 
@@ -36,17 +49,20 @@ const ChatItem = styled.div`
   }
 `;
 
-const MessageInput = styled.input`
-  position: absolute;
+const MessageInput = styled.div`
+  padding: 1rem;
   bottom: 0;
-  width: 50%;
-  height: 40px;
-  border-radius: 1em;
-  border: none;
-  background: #ebedef;
-`;
+  input{
+    width: 100%;
+    height: 40px;
+    border-radius: 1em;
+    border: none;
+    background: #ebedef;
+  }
+`
 
 const ChatList = ({channelName, chatArr}) => {
+
   return (
     <div style={{display: "flex", flex: "1", flexDirection: "column", height: "100vh"}}>
       <ChatHeader>
@@ -54,7 +70,10 @@ const ChatList = ({channelName, chatArr}) => {
           <img src="sharp.svg" alt="sharp"/>
           {channelName}
         </div>
-        <img src="member.png" alt="member"/>
+        <div style={{display: "flex"}}>
+          <button><img src="member.png" alt="member" width="20" height="auto"/></button>
+          <button><img src="logout.png" alt="logout" width="20" height="auto"/></button>
+        </div>
       </ChatHeader>
       <ChatContainer>
         {chatArr.map((chat, index) =>(
@@ -69,8 +88,10 @@ const ChatList = ({channelName, chatArr}) => {
             </div>
           </ChatItem>
         ))}
-        <MessageInput placeholder={"Message #" + channelName}/>
       </ChatContainer>
+      <MessageInput>
+        <input placeholder={"Message #" + channelName} />
+      </MessageInput>
     </div>
   );
 }
