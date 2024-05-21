@@ -9,7 +9,7 @@ function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/join" element={<JoinPage />} />
-      <Route path="/main" element={<MainPage name="조예진"/>} />
+      <Route path="/" element={<MainPage />} />
     </Routes>
   );
 }

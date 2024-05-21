@@ -4,8 +4,10 @@ import NoChat from "../../component/chat/NoChat";
 import ChatRoom from "../../component/chat/ChatRoom";
 import ChatList from "../../component/chat/ChatList";
 
-const MainPage = ({name}) => {
+const MainPage = () => {
   //임시 변수 (나중에 RequestBody로 받을 거임)
+
+  const nickname = sessionStorage.getItem("nickname");
   const serverArr = ["apple", "banana"];
   const selectedServerIdx = 0;
   const chatRoomArr = ["Room1", "Room2", "Room3"];
@@ -18,11 +20,11 @@ const MainPage = ({name}) => {
 
   return(
     <div style={{display: "flex", height: "100vh", width: "100vw"}}>
-      {/* <ServerList />
-      <NoChat name={name}/> */}
-      <ServerList serverArr={serverArr} selectedIdx={selectedServerIdx}/>
+      <ServerList />
+      <NoChat name={nickname}/>
+      {/* <ServerList serverArr={serverArr} selectedIdx={selectedServerIdx}/>
       <ChatRoom name={name} serverName="My Server" chatRoomArr={chatRoomArr} selectedIdx={2}/>
-      <ChatList channelName={chatRoomArr[2]} chatArr={chatArr}/>
+      <ChatList channelName={chatRoomArr[2]} chatArr={chatArr}/> */}
     </div>
   );
 }
