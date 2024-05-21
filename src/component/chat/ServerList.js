@@ -2,8 +2,7 @@ import React from "react";
 import styled from 'styled-components';
 
 const ServerBlock = styled.div`
-  width: 100px;
-  height: 100%;
+  width: 50px;
   padding: 10px;
   background: #e3e5e8;
   justify-content: center;
@@ -11,10 +10,12 @@ const ServerBlock = styled.div`
 `;
 
 const ServerItem = styled.button`
-  width: 80px;
-  height: 80px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
+  border: none;
   cursor: pointer;
+  font-size: x-large;
   &:hover {
     background: blue;
     border-radius: 25%;
@@ -22,8 +23,10 @@ const ServerItem = styled.button`
   }
   .selected{
     background: blue;
-    border-radius: 25%;
     color: white;
+  }
+  &+& {
+    margin-top: 8px;
   }
 `;
 
@@ -34,14 +37,14 @@ const ServerList = ({serverArr, selectedIdx}) => {
       {serverArr.map((button, index) => (
         <ServerItem className={selectedIdx === index ? 'selected' : ''}>{button.charAt(0)}</ServerItem>
       ))}
-      <ServerItem className={serverAdd ? 'selected': ''} style={{fontSize: "xxx-large"}}>+</ServerItem>
+      <ServerItem className={serverAdd ? 'selected': ''}>+</ServerItem>
     </ServerBlock>
   );
 }
 
 ServerList.defaultProps = {
   serverArr: [],
-  selectedIdx: 1
+  selectedIdx: 0
 };
 
 export default ServerList;
