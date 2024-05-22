@@ -20,6 +20,10 @@ const LoginPage = () => {
         localStorage.setItem("token", response.data.token);
         localStorage.setItem("nickname", response.data.nickname);
         localStorage.setItem("username", response.data.username);
+
+        axios.defaults.headers.common[
+          "Authorizationheader"
+        ] = `Bearer ${response.data.token}`;
         naviagate("/");
       }
     } catch (err) {

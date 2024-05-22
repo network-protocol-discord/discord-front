@@ -15,7 +15,7 @@ const NoChatBody = styled.div`
   flex-direction: column;
   justify-content: center;
   align-items: center;
-`
+`;
 const NoChat = ({name, handleLogout}) => {
   return(
     <BackgroundBlock>
