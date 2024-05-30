@@ -105,9 +105,9 @@ const HomePage = () => {
     } 
     else if(modalMessage === "참가 닉네임을 입력하세요"){
 
-      localStorage.setItem("username", modalInput);
+      // localStorage.setItem("username", modalInput);
       //modal close 없이 navigate 
-      navigate(`/server/${selectedServerId}`);
+      navigate(`/server/${selectedServerId}?username=${modalInput}`);
     }
   }
   const handleKeyPress = (e) => {

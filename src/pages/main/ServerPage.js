@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import axios from "axios";
 import * as StompJs from "@stomp/stompjs";
 import SockJS from "sockjs-client";
@@ -123,12 +123,12 @@ const MessageInput = styled.div`
 `
 
 const ServerPage = () => {
-  const username = localStorage.getItem('username');
   const {id} = useParams();
+  const username = new URLSearchParams(useLocation().search).get('username')
   const socket = new SockJS("/ws-stomp");
   const [serverInfo, setServerInfo] = useState(null); //서버 이름, 접속 유저
 
-  const client = useRef(null);
+  const client = useRef({});
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
   const [currentRoom, setCurrentRoom] = useState(''); //현재 채팅방 룸아이디, 이름 (기본 0)
@@ -148,12 +148,12 @@ const ServerPage = () => {
   }, []);
 
   const subscribe = () => {
-    client.current?.subscribe(`/sub/chat/room/${currentRoom.roomId}`, function (message) {
+    client.current.subscribe(`/sub/chat/room/${currentRoom.roomId}`, function (message) {
       const newMessage = JSON.parse(message.body);
       console.log(newMessage);
       setMessages((prev => [...prev, newMessage]));
     });
-    client.current?.publish({
+    client.current.publish({
       destination: `/pub/chat/message`,
       body: JSON.stringify({
         type: 'ENTER',
@@ -166,7 +166,10 @@ const ServerPage = () => {
 
   const connect = () => {
     client.current = new StompJs.Client({
-      webSocketFactory: () => socket,
+      debug: function(str) {
+        console.log(str);
+      },
+      webSocketFactory: () => socket, 
       reconnectDelay: 5000, // 자동 재 연결
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
@@ -193,6 +196,7 @@ const ServerPage = () => {
           message: message,
         })
       });
+      setMessage('');
     } else {
       alert("채팅을 입력해주세요"); 
     }
@@ -218,14 +222,12 @@ const ServerPage = () => {
     //선택된 채팅방이 바뀔때마다 호출
     connect();
     setMessages([]);
-    return () => client.current?.deactivate();
+    return () => client.current.deactivate();
   }, [currentRoom]);
 
   if(!serverInfo || serverInfo.chatRooms.length === 0) return null;
   return(
     <div style={{display: "flex", height: "100vh", width: "100vw"}}>
-      {/* <ServerList serverArr={serverArr} selectedIdx={selectedServerIdx}/> */}
-      {/* <ChatRoom name={username} serverName={serverInfo.name} chatRoomArr={chatRooms} selectedRoom={roomId}/> */}
       <ChatRoomContainer>
         <ChatRoomHeader>
           <div className="title">{serverInfo.name}</div>
@@ -262,8 +264,7 @@ const ServerPage = () => {
             <button style={{height: "100%"}}><img src="/images/headset.png" alt="headset"/></button>
           </div>
         </ChatRoomFooter>
-      </ChatRoomContainer>
-
+      </ChatRoomContainer>     
       <div style={{display: "flex", flex: "1", flexDirection: "column", height: "100vh"}}>
         <ChatHeader>
           <div className="title">
