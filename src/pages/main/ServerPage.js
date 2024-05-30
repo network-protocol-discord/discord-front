@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
+import ReactModal from "react-modal";
 import axios from "axios";
 import * as StompJs from "@stomp/stompjs";
 import SockJS from "sockjs-client";
@@ -120,7 +121,31 @@ const MessageInput = styled.div`
     border: none;
     background: #ebedef;
   }
-`
+`;
+
+const modalStyles = {
+  overlay: {
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    position: "fixed",
+    width: "100%",
+    height: "100vh",
+    top: "0",
+    left: "0",
+    zIndex: 10,
+  },
+  content: {
+    width: "300px",
+    height: "200px",
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
+    borderRadius: "10px",
+    backgroundColor: "white",
+    justifyContent: "center",
+    padding: "8px",
+  },
+};
 
 const ServerPage = () => {
   const {id} = useParams();
@@ -131,16 +156,18 @@ const ServerPage = () => {
   const client = useRef({});
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
+  const [chatRooms, setChatRooms] = useState([]);
   const [currentRoom, setCurrentRoom] = useState(''); //현재 채팅방 룸아이디, 이름 (기본 0)
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalInput, setModalInput] = useState('');
   const navigate = useNavigate();
   
   useEffect(() => {
     axios.get(`/server/${id}`)
       .then(response => {
         setServerInfo(response.data);
-        if (response.data.chatRooms && response.data.chatRooms.length > 0) {
-          setCurrentRoom(response.data.chatRooms[0]);
-        }
+        setCurrentRoom(response.data.chatRooms[0]);
+        setChatRooms(response.data.chatRooms);
       })
       .catch(error => {
         console.log(error);
@@ -209,6 +236,20 @@ const ServerPage = () => {
     }
   }
 
+  const addChannel = async () => {
+    try {
+      const res = await axios.post(`/server/${id}/chat/room?name=${modalInput}`, {
+        
+      });
+      if(res.status === 200) {
+        setChatRooms((prev => [...prev, res.data]));
+        setModalOpen(false);
+      }
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
   const formatTime = (localdatetime) => {
     const date = new Date(localdatetime);
     // Extract hours and minutes
@@ -225,9 +266,23 @@ const ServerPage = () => {
     return () => client.current.deactivate();
   }, [currentRoom]);
 
-  if(!serverInfo || serverInfo.chatRooms.length === 0) return null;
+  if(!serverInfo) return null;
   return(
     <div style={{display: "flex", height: "100vh", width: "100vw"}}>
+      <ReactModal
+        isOpen={modalOpen}
+        onRequestClose={() => setModalOpen(false)}
+        style={modalStyles}
+        >
+        <h2>채팅방 이름 입력</h2>
+        <input id="channel-name" style={{width: "100%", height: "40px", borderRadius: "10px"}} 
+              value={modalInput} onChange={(e) => setModalInput(e.target.value)} />
+        <div style={{bottom: "0", display: "flex", justifyContent: "space-between",
+               padding: "8px", borderTop: "1px solid black"}}>
+          <button onClick={() => setModalOpen(false)}>닫기</button>
+          <button onClick={() => addChannel()}>추가</button>
+        </div>
+      </ReactModal>
       <ChatRoomContainer>
         <ChatRoomHeader>
           <div className="title">{serverInfo.name}</div>
@@ -240,9 +295,9 @@ const ServerPage = () => {
         <ChatRoomList>
           <div style={{display: "flex", justifyContent: "space-between", marginTop: "1em"}}>
             <div>MEETING CHANNELS</div>
-            <button><img src="/images/plus.svg" alt="invite"/></button>
+            <button onClick={() => setModalOpen(true)}><img src="/images/plus.svg" alt="invite"/></button>
           </div>
-          {serverInfo.chatRooms.map((chatRoom, index) => (
+          {chatRooms.map((chatRoom, index) => (
             <ChatRoomItem key={chatRoom.roomId}
                 className={chatRoom.roomId === currentRoom.roomId ? 'selected' : ''} 
                 onClick={() => setCurrentRoom(chatRoom)}>
@@ -269,7 +324,7 @@ const ServerPage = () => {
         <ChatHeader>
           <div className="title">
             <img src="/images/sharp.svg" alt="sharp"/>
-            {serverInfo.chatRooms[0].name}
+            {currentRoom.name}
           </div>
           <div style={{display: "flex"}}>
             <button><img src="/images/member.png" alt="member" width="20" height="auto"/></button>
