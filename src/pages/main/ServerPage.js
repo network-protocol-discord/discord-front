@@ -158,6 +158,7 @@ const ServerPage = () => {
         body: JSON.stringify({
           candidate: e.candidate,
           senderId: username,
+          roomId: currentRoom.roomId
         })
       });
     };
@@ -258,7 +259,6 @@ const ServerPage = () => {
         console.log("stream found", stream);
         localStream.current = stream;
         localVideoRef.current.srcObject = stream;
-        document.getElementById('videoLocal').srcObject = stream;
         if(!socket.current) return;
         //disable microphone default
         // stream.getAudioTracks()[0].enabled = true;
@@ -326,9 +326,9 @@ const ServerPage = () => {
 
   const connect = () => {
     client.current = new StompJs.Client({
-      debug: function(str) {
-        console.log(str);
-      },
+      // debug: function(str) {
+      //   console.log(str);
+      // },
       webSocketFactory: () => socket, 
       reconnectDelay: 5000, // 자동 재 연결
       heartbeatIncoming: 4000,
@@ -350,7 +350,7 @@ const ServerPage = () => {
 
   const disconnect = () => {
     client.current.deactivate();
-    sendPCRef.current.close();
+    if(sendPCRef.current) sendPCRef.current.close();
     users.forEach((user) => closeReceivePC(user.id));
   }
 

@@ -15,9 +15,6 @@ const VideoBox = styled.video`
   display: flex; /* Flex 컨테이너로 설정 */
   flex-direction: column; /* Flex 방향을 컬럼으로 설정 */
   justify-content: flex-end; /* 주축을 기준으로 하위 요소들을 끝에 정렬 */
-  &+&{
-    margin-
-  }
   .name {
     width: 50px;
     height: 20px;
