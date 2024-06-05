@@ -1,68 +1,12 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import ReactModal from "react-modal";
 import axios from "axios";
 import * as StompJs from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 import styled from "styled-components";
-
-const ChatRoomContainer = styled.div`
-  width: 300px;
-  background: #f2f3f5;
-  display: flex;
-  flex-direction: column;
-  button{
-    overflow: hidden;
-    cursor: pointer;
-    border: none;
-    img{
-      display: block;
-    }
-    &:hover{
-      background: #ebedef;
-    }
-  }
-`
-const ChatRoomHeader = styled.div`
-  padding: 1em;
-  display: flex;
-  justify-content: space-between;
-  border-bottom: 1px grey solid;
-  .title{
-    font-size: x-large;
-  }
-`;
-
-const ChatRoomList = styled.div`
-  flex-grow: 1;
-  padding: 1em 0.5em;
-  color: #6a7480;
-`;
-
-const ChatRoomItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  height: 40px;
-  color: #6a7480;
-  border-radius: 10%;
-  padding: 4px;
-  cursor: pointer;
-  &:hover{
-    background: #ebedef;
-    color: black;
-  }
-  .selected{
-    background: #ebedef;
-    color: black;
-  }
-`
-const ChatRoomFooter = styled.div`
-  display: flex;
-  justify-content: space-between;
-  height: 40px;
-  background: #ebedef;
-  padding: 8px;
-`;
+import ChatRoom from "../../component/chat/ChatRoom";
+import VideoStream from "../../component/chat/VideoStream";
+import { pcConfig } from "../../component/config/pcConfig";
 
 const ChatHeader = styled.div`
   padding: 1em;
@@ -87,7 +31,7 @@ const ChatHeader = styled.div`
 `;
 
 const ChatContainer = styled.div`
-  overflow: scroll;
+  overflow: auto;
   padding: 1rem;
   flex: 1;
   position: relative;
@@ -123,29 +67,6 @@ const MessageInput = styled.div`
   }
 `;
 
-const modalStyles = {
-  overlay: {
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-    position: "fixed",
-    width: "100%",
-    height: "100vh",
-    top: "0",
-    left: "0",
-    zIndex: 10,
-  },
-  content: {
-    width: "300px",
-    height: "200px",
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    transform: "translate(-50%, -50%)",
-    borderRadius: "10px",
-    backgroundColor: "white",
-    justifyContent: "center",
-    padding: "8px",
-  },
-};
 
 const ServerPage = () => {
   const {id} = useParams();
@@ -154,13 +75,18 @@ const ServerPage = () => {
   const [serverInfo, setServerInfo] = useState(null); //서버 이름, 접속 유저
 
   const client = useRef({});
+  const localStream = useRef();
+  const localVideoRef = useRef(null);
+  const sendPCRef = useRef();
+  const receivePCsRef = useRef({});
+  const [users, setUsers] = useState([]);
+
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
   const [chatRooms, setChatRooms] = useState([]);
   const [currentRoom, setCurrentRoom] = useState(''); //현재 채팅방 룸아이디, 이름 (기본 0)
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalInput, setModalInput] = useState('');
-  const navigate = useNavigate();
+
+  const [webChatopen, setWebChatOpen] = useState(true); //웹 채팅 부분 toggle
   
   useEffect(() => {
     axios.get(`/server/${id}`)
@@ -173,6 +99,179 @@ const ServerPage = () => {
         console.log(error);
       });
   }, []);
+  
+  const closeReceivePC = useCallback((id) => {
+    if(!receivePCsRef.current[id]) return;
+    receivePCsRef.current[id].close();
+    delete receivePCsRef.current[id];
+  }, []);
+
+  const createSenderOffer = useCallback(async() => {
+    if(sendPCRef.current) {
+      try{
+        const sdp = await sendPCRef.current.createOffer({
+          offerToReceiveAudio: false,
+          offerToReceiveVideo: false,
+        });
+        sendPCRef.current.setLocalDescription(new RTCSessionDescription(sdp));
+        
+        socket.current.publish({
+          destination: `/pub/video/peer/offer/`,
+          body: JSON.stringify({
+            sdp: sdp,
+            senderId: username,
+            roomId: currentRoom.roomId
+          })
+        });
+      } catch (e) {
+        console.log(e);
+      }
+    }
+  }, []);
+
+  const createSenderAnswer = useCallback(async(pc, senderId) => {
+    try {
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      //send the answer back to sender
+      socket.current.publish({
+        destination: `/pub/video/peer/answer`,
+        body: JSON.stringify({
+          sdp: answer,
+          senderId: senderId,
+          receiverId: username,
+          roomId: currentRoom.roomId
+        })
+      });
+    } catch (err) {
+      console.log(err);
+    }
+  }, []);
+
+  const createSenderPeerConnection = useCallback(() => {
+    const pc = new RTCPeerConnection(pcConfig);
+    pc.onicecandidate = (e) => {
+      if(!(e.candidate && socket.current)) return;
+      socket.current.publish({
+        destination: `/pub/video/peer/candidate`,
+        body: JSON.stringify({
+          candidate: e.candidate,
+          senderId: username,
+        })
+      });
+    };
+    pc.oniceconnectionstatechange = (e) => {
+      console.log(e);
+    };
+
+    if(localStream.current) {
+      localStream.current.getTracks().forEach((track) => {
+        if(!localStream.current) return;
+        pc.addTrack(track, localStream.current);
+      });
+    } else {
+      console.log("no local stream");
+    }
+    sendPCRef.current = pc;
+  }, []);
+
+  const createReceiverOffer = useCallback(async (pc, senderSocketID) => {
+    try{
+      const sdp = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      });
+      pc.setLocalDescription(new RTCSessionDescription(sdp));
+      if(!socket.current) return;
+
+      socket.current.publish({
+        destination: `/pub/video/peer/offer`,
+        body: JSON.stringify({
+          sdp: sdp,
+          senderId: senderSocketID,
+          receiverId: username,
+          roomId: currentRoom.roomId
+        })
+      });
+    } catch (err) {
+      console.log(err);
+    }
+  }, []);
+
+  const createReceiverPeerConnection = useCallback((socketId) => {
+    try {
+      const pc = new RTCPeerConnection(pcConfig);
+      receivePCsRef.current = { ...receivePCsRef.current, [socketId]: pc};
+      pc.onicecandidate = (e) => {
+        if(!(e.candidate && socket.current)) return;
+        socket.current.publish({
+          destination: `/pub/video/peer/candidate`,
+          body: JSON.stringify({
+            candidate: e.candidate,
+            receiverId: username,
+            senderId: socketId,
+            roomId: currentRoom.roomId
+          })
+        })
+      };
+      pc.oniceconnectionstatechange = (e) => {
+        console.log(e);
+      }
+      pc.ontrack = (e) => {
+        setUsers((oldUsers) => 
+          oldUsers.filter((user) => user.id !== socketId).concat({
+            id: socketId,
+            stream: e.streams[0],
+          })
+        );
+      };
+      return pc;
+
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const createReceiverPC = useCallback((id) => {
+      try {
+        const pc = createReceiverPeerConnection(id);
+        if(!socket.current || !pc) return;
+        createReceiverOffer(pc, id);
+      } catch (err) {
+        console.log(err);
+      }
+    }, [createReceiverOffer, createReceiverPeerConnection]
+  );
+
+  //웹캠 오픈
+  const startLocalStream = useCallback(async() => {
+    if(navigator.mediaDevices !== undefined) {
+      await navigator.mediaDevices.getUserMedia({
+        audio: true, 
+        video: {
+          width: 330,
+          height: 230
+        },
+      })
+      .then(async (stream) => {
+        console.log("stream found", stream);
+        localStream.current = stream;
+        localVideoRef.current.srcObject = stream;
+        document.getElementById('videoLocal').srcObject = stream;
+        if(!socket.current) return;
+        //disable microphone default
+        // stream.getAudioTracks()[0].enabled = true;
+        createSenderPeerConnection();
+        await createSenderOffer();
+        
+      })
+      .catch(e => {
+        console.log("Get User Media Error: ",e);
+      });
+        
+    }
+  }, [createSenderOffer, createSenderPeerConnection]);
 
   const subscribe = () => {
     client.current.subscribe(`/sub/chat/room/${currentRoom.roomId}`, function (message) {
@@ -180,6 +279,40 @@ const ServerPage = () => {
       console.log(newMessage);
       setMessages((prev => [...prev, newMessage]));
     });
+
+    client.current.subscribe(`/sub/video/peer/offer/${currentRoom.roomId}`, function(data) {
+      const body = JSON.parse(data.body);
+      createReceiverPC(body.senderId);
+      const pc = receivePCsRef.current[body.senderId];
+
+      pc.setRemoteDescription(new RTCSessionDescription(body.sdp));
+      createSenderAnswer(pc, body.senderId);
+    });
+
+    client.current.subscribe(`/sub/video/peer/answer/${currentRoom.roomId}`, async (data) => {
+      try {
+        const body = JSON.parse(data.body);
+        const pc = receivePCsRef.current[body.senderId];
+
+        if(!pc) return;
+        await pc.setRemoteDescription(body.sdp);
+        
+      } catch (e) {
+        console.log(e);
+      }
+    });
+
+    client.current.subscribe(`/sub/video/peer/candidate/${currentRoom.roomId}`, async (data) => {
+      try {
+        const body = JSON.parse(data.body);
+        const pc = receivePCsRef.current[body.senderId];
+        if(!(pc && body.candidate)) return;
+        await pc.addIceCandidate(new RTCIceCandidate(body.candidate));
+      } catch (e) {
+        console.log(e);
+      }
+    });
+
     client.current.publish({
       destination: `/pub/chat/message`,
       body: JSON.stringify({
@@ -203,14 +336,23 @@ const ServerPage = () => {
 
       onConnect: () => {
         console.log('success');
+        //연결되었으면 웹캠 실행 후 알림 주기
+        startLocalStream();
         subscribe();
       },
       onStompError: frame => {
         console.error(frame);
       },
     });
+
     client.current.activate();
   };
+
+  const disconnect = () => {
+    client.current.deactivate();
+    sendPCRef.current.close();
+    users.forEach((user) => closeReceivePC(user.id));
+  }
 
   const sendChat = () => {
     if(message.trim() !== '') {
@@ -236,20 +378,6 @@ const ServerPage = () => {
     }
   }
 
-  const addChannel = async () => {
-    try {
-      const res = await axios.post(`/server/${id}/chat/room?name=${modalInput}`, {
-        
-      });
-      if(res.status === 200) {
-        setChatRooms((prev => [...prev, res.data]));
-        setModalOpen(false);
-      }
-    } catch (err) {
-      console.log(err);
-    }
-  };
-
   const formatTime = (localdatetime) => {
     const date = new Date(localdatetime);
     // Extract hours and minutes
@@ -263,63 +391,14 @@ const ServerPage = () => {
     //선택된 채팅방이 바뀔때마다 호출
     connect();
     setMessages([]);
-    return () => client.current.deactivate();
+    return () => disconnect();
   }, [currentRoom]);
 
   if(!serverInfo) return null;
   return(
     <div style={{display: "flex", height: "100vh", width: "100vw"}}>
-      <ReactModal
-        isOpen={modalOpen}
-        onRequestClose={() => setModalOpen(false)}
-        style={modalStyles}
-        >
-        <h2>채팅방 이름 입력</h2>
-        <input id="channel-name" style={{width: "100%", height: "40px", borderRadius: "10px"}} 
-              value={modalInput} onChange={(e) => setModalInput(e.target.value)} />
-        <div style={{bottom: "0", display: "flex", justifyContent: "space-between",
-               padding: "8px", borderTop: "1px solid black"}}>
-          <button onClick={() => setModalOpen(false)}>닫기</button>
-          <button onClick={() => addChannel()}>추가</button>
-        </div>
-      </ReactModal>
-      <ChatRoomContainer>
-        <ChatRoomHeader>
-          <div className="title">{serverInfo.name}</div>
-          <div style={{display: "flex"}}>
-            <button><img src="/images/invite.png" alt="invite"/></button>
-            <button><img src="/images/delete.svg" alt="delete"/></button>
-          </div>
-        </ChatRoomHeader>
-
-        <ChatRoomList>
-          <div style={{display: "flex", justifyContent: "space-between", marginTop: "1em"}}>
-            <div>MEETING CHANNELS</div>
-            <button onClick={() => setModalOpen(true)}><img src="/images/plus.svg" alt="invite"/></button>
-          </div>
-          {chatRooms.map((chatRoom, index) => (
-            <ChatRoomItem key={chatRoom.roomId}
-                className={chatRoom.roomId === currentRoom.roomId ? 'selected' : ''} 
-                onClick={() => setCurrentRoom(chatRoom)}>
-              <div style={{display: "flex"}}>
-                <img src="/images/sharp.svg" alt="sharp" width="25" height="auto"/>
-                <div style={{padding: "10% 10%", fontSize: "large"}}>{chatRoom.name}</div>
-              </div>
-              <button><img src="/images/delete.svg" alt="delete"/></button>
-            </ChatRoomItem>
-          ))}
-        </ChatRoomList>
-        <ChatRoomFooter>
-          <button style={{display: "flex", border: "none", cursor: "pointer", width: "60%"}}>
-            <img src="/images/discord-circle.png" alt="discord" width="37" height="auto"/>
-            <div style={{padding: "5% 0", fontSize: "large", marginLeft: "8px"}}>{username}</div>
-          </button>
-          <div>
-            <button style={{height: "100%"}}><img src="/images/mic.png" alt="mic"/></button>
-            <button style={{height: "100%"}}><img src="/images/headset.png" alt="headset"/></button>
-          </div>
-        </ChatRoomFooter>
-      </ChatRoomContainer>     
+      <ChatRoom serverName={serverInfo.name} chatRooms={chatRooms}
+                currentRoom={currentRoom} setChatRooms={setChatRooms} setCurrentRoom={setCurrentRoom} />
       <div style={{display: "flex", flex: "1", flexDirection: "column", height: "100vh"}}>
         <ChatHeader>
           <div className="title">
@@ -327,29 +406,34 @@ const ServerPage = () => {
             {currentRoom.name}
           </div>
           <div style={{display: "flex"}}>
-            <button><img src="/images/member.png" alt="member" width="20" height="auto"/></button>
+            <button onClick={() => setWebChatOpen(!webChatopen)}><img src="/images/member.png" alt="member" width="20" height="auto"/></button>
             <button><img src="/images/logout.png" alt="logout" width="20" height="auto"/></button>
           </div>
         </ChatHeader>
-        <ChatContainer>
-          {messages.map((chat, index) =>(
-            <ChatItem>
-              <img src="/images/discord-circle.png" alt="discord"/>
-              <div style={{marginLeft: "4px"}}>
-                <div style={{display: "flex"}}>
-                  <div className="sender">{chat.sender}</div>
-                  <div className="time">{formatTime(chat.time)}</div>
-                </div>
-                <div className="msg">{chat.message}</div>
-              </div>
-            </ChatItem>
-          ))}
-        </ChatContainer>
-        <MessageInput>
-          <input placeholder={"Message #" + currentRoom.name} value={message} 
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={(e) => handleKeyPress(e)}/>
-        </MessageInput>
+        <div style={{display: "flex", flexGrow: "1"}}>
+          <div style={{display: "flex", flexDirection: "column", flex: "1"}}>
+            <ChatContainer>
+              {messages.map((chat, index) =>(
+                <ChatItem>
+                  <img src="/images/discord-circle.png" alt="discord"/>
+                  <div style={{marginLeft: "4px"}}>
+                    <div style={{display: "flex"}}>
+                      <div className="sender">{chat.sender}</div>
+                      <div className="time">{formatTime(chat.time)}</div>
+                    </div>
+                    <div className="msg">{chat.message}</div>
+                  </div>
+                </ChatItem>
+              ))}
+            </ChatContainer>
+            <MessageInput>
+              <input placeholder={"Message #" + currentRoom.name} value={message} 
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={(e) => handleKeyPress(e)}/>
+            </MessageInput>
+          </div>
+          {webChatopen && <VideoStream users={users} localVideoRef={localVideoRef} />}
+        </div>
       </div>
     </div>
   );
