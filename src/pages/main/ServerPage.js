@@ -70,16 +70,16 @@ const MessageInput = styled.div`
 
 const ServerPage = () => {
   const {id} = useParams();
-  const username = new URLSearchParams(useLocation().search).get('username')
+  const username = new URLSearchParams(useLocation().search).get('username');
   const socket = new SockJS("/ws-stomp");
   const [serverInfo, setServerInfo] = useState(null); //서버 이름, 접속 유저
 
   const client = useRef({});
   const localStream = useRef();
   const localVideoRef = useRef(null);
-  const sendPCRef = useRef();
-  const receivePCsRef = useRef({});
-  const [users, setUsers] = useState([]);
+  let pcListMap = new Map();
+  let keyList = [];
+  const myKey = Math.random().toString(36).substring(2, 11);
 
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
@@ -99,65 +99,35 @@ const ServerPage = () => {
         console.log(error);
       });
   }, []);
-  
-  const closeReceivePC = useCallback((id) => {
-    if(!receivePCsRef.current[id]) return;
-    receivePCsRef.current[id].close();
-    delete receivePCsRef.current[id];
-  }, []);
 
-  const createSenderOffer = useCallback(async() => {
-    if(sendPCRef.current) {
-      try{
-        const sdp = await sendPCRef.current.createOffer({
-          offerToReceiveAudio: false,
-          offerToReceiveVideo: false,
-        });
-        sendPCRef.current.setLocalDescription(new RTCSessionDescription(sdp));
-        
-        socket.current.publish({
-          destination: `/pub/video/peer/offer/`,
+  const sendPeerAnswer = useCallback(async(pc, key) => {
+    try {
+      await pc.createAnswer().then(answer => {
+        pc.setLocalDescription(answer);
+        client.current.publish({
+          destination: `/pub/video/peer/answer`,
           body: JSON.stringify({
-            sdp: sdp,
-            senderId: username,
+            sdp: answer,
+            key: key,
             roomId: currentRoom.roomId
           })
         });
-      } catch (e) {
-        console.log(e);
-      }
-    }
-  }, []);
-
-  const createSenderAnswer = useCallback(async(pc, senderId) => {
-    try {
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      //send the answer back to sender
-      socket.current.publish({
-        destination: `/pub/video/peer/answer`,
-        body: JSON.stringify({
-          sdp: answer,
-          senderId: senderId,
-          receiverId: username,
-          roomId: currentRoom.roomId
-        })
-      });
+        console.log("Sender answer");
+      })
     } catch (err) {
       console.log(err);
     }
-  }, []);
+  }, [currentRoom]);
 
-  const createSenderPeerConnection = useCallback(() => {
+  const createPeerConnection = useCallback((key) => {
     const pc = new RTCPeerConnection(pcConfig);
     pc.onicecandidate = (e) => {
-      if(!(e.candidate && socket.current)) return;
-      socket.current.publish({
+      if(!(e.candidate && client.current)) return;
+      client.current.publish({
         destination: `/pub/video/peer/candidate`,
         body: JSON.stringify({
           candidate: e.candidate,
-          senderId: username,
+          key: key,
           roomId: currentRoom.roomId
         })
       });
@@ -165,85 +135,47 @@ const ServerPage = () => {
     pc.oniceconnectionstatechange = (e) => {
       console.log(e);
     };
-
+    pc.ontrack = (e) => {
+      if(document.getElementById(`${key}`) === null) {
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.id = key;
+        video.srcObject = e.streams[0];
+  
+        document.getElementById('remote-stream').appendChild(video);
+      }
+    }
     if(localStream.current) {
       localStream.current.getTracks().forEach((track) => {
         if(!localStream.current) return;
         pc.addTrack(track, localStream.current);
       });
-    } else {
-      console.log("no local stream");
+      console.log("peer connection created");
     }
-    sendPCRef.current = pc;
-  }, []);
+    return pc;
+  }, [currentRoom]);
 
-  const createReceiverOffer = useCallback(async (pc, senderSocketID) => {
+  const sendPeerOffer = useCallback(async (pc, key) => {
     try{
-      const sdp = await pc.createOffer({
+      await pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: true,
-      });
-      pc.setLocalDescription(new RTCSessionDescription(sdp));
-      if(!socket.current) return;
-
-      socket.current.publish({
-        destination: `/pub/video/peer/offer`,
-        body: JSON.stringify({
-          sdp: sdp,
-          senderId: senderSocketID,
-          receiverId: username,
-          roomId: currentRoom.roomId
-        })
-      });
+      }).then(sdp => {
+        pc.setLocalDescription(new RTCSessionDescription(sdp));
+        client.current.publish({
+          destination: `/pub/video/peer/offer`,
+          body: JSON.stringify({
+            sdp: sdp,
+            key: key,
+            roomId: currentRoom.roomId
+          })
+        });
+        console.log("send offer");
+      })
     } catch (err) {
       console.log(err);
     }
-  }, []);
-
-  const createReceiverPeerConnection = useCallback((socketId) => {
-    try {
-      const pc = new RTCPeerConnection(pcConfig);
-      receivePCsRef.current = { ...receivePCsRef.current, [socketId]: pc};
-      pc.onicecandidate = (e) => {
-        if(!(e.candidate && socket.current)) return;
-        socket.current.publish({
-          destination: `/pub/video/peer/candidate`,
-          body: JSON.stringify({
-            candidate: e.candidate,
-            receiverId: username,
-            senderId: socketId,
-            roomId: currentRoom.roomId
-          })
-        })
-      };
-      pc.oniceconnectionstatechange = (e) => {
-        console.log(e);
-      }
-      pc.ontrack = (e) => {
-        setUsers((oldUsers) => 
-          oldUsers.filter((user) => user.id !== socketId).concat({
-            id: socketId,
-            stream: e.streams[0],
-          })
-        );
-      };
-      return pc;
-
-    } catch (e) {
-      console.error(e);
-    }
-  }, []);
-
-  const createReceiverPC = useCallback((id) => {
-      try {
-        const pc = createReceiverPeerConnection(id);
-        if(!socket.current || !pc) return;
-        createReceiverOffer(pc, id);
-      } catch (err) {
-        console.log(err);
-      }
-    }, [createReceiverOffer, createReceiverPeerConnection]
-  );
+  }, [currentRoom]);
 
   //웹캠 오픈
   const startLocalStream = useCallback(async() => {
@@ -259,19 +191,13 @@ const ServerPage = () => {
         console.log("stream found", stream);
         localStream.current = stream;
         localVideoRef.current.srcObject = stream;
-        if(!socket.current) return;
-        //disable microphone default
-        // stream.getAudioTracks()[0].enabled = true;
-        createSenderPeerConnection();
-        await createSenderOffer();
-        
       })
       .catch(e => {
         console.log("Get User Media Error: ",e);
       });
         
     }
-  }, [createSenderOffer, createSenderPeerConnection]);
+  }, [localStream]);
 
   const subscribe = () => {
     client.current.subscribe(`/sub/chat/room/${currentRoom.roomId}`, function (message) {
@@ -280,36 +206,61 @@ const ServerPage = () => {
       setMessages((prev => [...prev, newMessage]));
     });
 
-    client.current.subscribe(`/sub/video/peer/offer/${currentRoom.roomId}`, function(data) {
+    client.current.subscribe(`/sub/video/peer/offer/${currentRoom.roomId}`, async(data) =>{
       const body = JSON.parse(data.body);
-      createReceiverPC(body.senderId);
-      const pc = receivePCsRef.current[body.senderId];
+      const key = body.key;
+      const sdp = body.sdp;
+      console.log(sdp);
 
-      pc.setRemoteDescription(new RTCSessionDescription(body.sdp));
-      createSenderAnswer(pc, body.senderId);
+      pcListMap.set(key, createPeerConnection(key));
+      await pcListMap.get(key).setRemoteDescription(new RTCSessionDescription(sdp));
+      await sendPeerAnswer(pcListMap.get(key), key);
     });
 
-    client.current.subscribe(`/sub/video/peer/answer/${currentRoom.roomId}`, async (data) => {
+    client.current.subscribe(`/sub/video/peer/answer/${currentRoom.roomId}`, async(data) => {
       try {
         const body = JSON.parse(data.body);
-        const pc = receivePCsRef.current[body.senderId];
+        const pc = pcListMap.get(body.key);
+        console.log(body.sdp);
 
-        if(!pc) return;
-        await pc.setRemoteDescription(body.sdp);
+        await pc.setRemoteDescription(new RTCSessionDescription(body.sdp));
         
       } catch (e) {
         console.log(e);
       }
     });
 
-    client.current.subscribe(`/sub/video/peer/candidate/${currentRoom.roomId}`, async (data) => {
+    client.current.subscribe(`/sub/video/peer/candidate/${currentRoom.roomId}`, async(data) => {
       try {
         const body = JSON.parse(data.body);
-        const pc = receivePCsRef.current[body.senderId];
-        if(!(pc && body.candidate)) return;
-        await pc.addIceCandidate(new RTCIceCandidate(body.candidate));
+        const key = body.key;
+        const candidate = body.candidate;
+        console.log(candidate);
+        if(!body.candidate) return;
+
+        await pcListMap.get(key).addIceCandidate(new RTCIceCandidate(candidate));
       } catch (e) {
         console.log(e);
+      }
+    });
+
+    client.current.subscribe(`/sub/call/key/${currentRoom.roomId}`, (message) => {
+      try {
+        client.current.publish({
+          destination: `/pub/send/key/${currentRoom.roomId}`,
+          body: JSON.stringify(myKey)
+        })
+      } catch (e) {
+        console.log(e);
+      }
+    });
+
+    client.current.subscribe(`/sub/send/key/${currentRoom.roomId}`, async (data) => {
+      const key = JSON.parse(data.body);
+      
+      if(!pcListMap.has(key)) {
+        await pcListMap.set(key, createPeerConnection(key));
+        sendPeerOffer(pcListMap.get(key), key);
       }
     });
 
@@ -322,6 +273,13 @@ const ServerPage = () => {
       })
     });
 
+    client.current.publish({
+      destination: `/pub/call/key/${currentRoom.roomId}`,
+      body: JSON.stringify({
+
+      })
+    });
+    
   };
 
   const connect = () => {
@@ -350,8 +308,6 @@ const ServerPage = () => {
 
   const disconnect = () => {
     client.current.deactivate();
-    if(sendPCRef.current) sendPCRef.current.close();
-    users.forEach((user) => closeReceivePC(user.id));
   }
 
   const sendChat = () => {
@@ -432,7 +388,7 @@ const ServerPage = () => {
                   onKeyDown={(e) => handleKeyPress(e)}/>
             </MessageInput>
           </div>
-          {webChatopen && <VideoStream users={users} localVideoRef={localVideoRef} />}
+          {webChatopen && <VideoStream myKey={myKey} localVideoRef={localVideoRef} />}
         </div>
       </div>
     </div>

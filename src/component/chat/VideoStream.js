@@ -47,52 +47,13 @@ const VideoDisableButton = styled.button`
   justify-content: center;
 `;
 
-const VideoStream = ({users, localVideoRef}) => {
+const VideoStream = ({myKey, localVideoRef}) => {
   
   return(
     <VideoChatContainer>
       <div style={{height: "600px", overflowY: "auto"}}>
-        <VideoBox id="localStream" ref={localVideoRef} autoPlay muted/>
-          {/* <div style={{display: "flex", justifyContent: "space-between"}}> 
-            <div className="name">나</div>
-            <div className="mic">
-              <img src="/images/mic-white.png" alt="mic" />
-              <img src="/images/red-line.png" alt="redline" />
-            </div>
-          </div> */}
-        {users.map((user, index) => (
-          <VideoBox stream={user.stream} />
-        ))}
-          {/* <VideoBox>
-            <div style={{display: "flex", justifyContent: "space-between"}}> 
-              <div className="name">부덕이</div>
-              <div className="mic">
-                <img src="/images/mic-white.png" alt="mic" />
-                <img src="/images/red-line.png" alt="redline" />
-              </div>
-            </div>
-          </VideoBox> */}
-        
-        {/* <div style={{display: "flex"}}>
-          <VideoBox>
-            <div style={{display: "flex", justifyContent: "space-between"}}> 
-              <div className="name">부덕이</div>
-              <div className="mic">
-                <img src="/images/mic-white.png" alt="mic" />
-                <img src="/images/red-line.png" alt="redline" />
-              </div>
-            </div>
-          </VideoBox>
-          <VideoBox>
-            <div style={{display: "flex", justifyContent: "space-between"}}> 
-              <div className="name">부덕이</div>
-              <div className="mic">
-                <img src="/images/mic-white.png" alt="mic" />
-                <img src="/images/red-line.png" alt="redline" />
-              </div>
-            </div>
-          </VideoBox>
-        </div> */}
+        <VideoBox ref={localVideoRef} autoPlay muted/>
+        <div id="remote-stream"></div>
       </div>
       <div style={{display: "flex", marginTop: "1rem", justifyContent: "center"}}>
         <VideoDisableButton>
