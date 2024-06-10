@@ -105,10 +105,10 @@ const ServerPage = () => {
       await pc.createAnswer().then(answer => {
         pc.setLocalDescription(answer);
         client.current.publish({
-          destination: `/pub/video/peer/answer`,
+          destination: `/pub/video/peer/answer/${key}`,
           body: JSON.stringify({
             sdp: answer,
-            key: key,
+            key: myKey,
             roomId: currentRoom.roomId
           })
         });
@@ -124,16 +124,13 @@ const ServerPage = () => {
     pc.onicecandidate = (e) => {
       if(!(e.candidate && client.current)) return;
       client.current.publish({
-        destination: `/pub/video/peer/candidate`,
+        destination: `/pub/video/peer/candidate/${key}`,
         body: JSON.stringify({
           candidate: e.candidate,
-          key: key,
+          key: myKey,
           roomId: currentRoom.roomId
         })
       });
-    };
-    pc.oniceconnectionstatechange = (e) => {
-      console.log(e);
     };
     pc.ontrack = (e) => {
       if(document.getElementById(`${key}`) === null) {
@@ -163,10 +160,10 @@ const ServerPage = () => {
       }).then(sdp => {
         pc.setLocalDescription(new RTCSessionDescription(sdp));
         client.current.publish({
-          destination: `/pub/video/peer/offer`,
+          destination: `/pub/video/peer/offer/${key}`,
           body: JSON.stringify({
             sdp: sdp,
-            key: key,
+            key: myKey,
             roomId: currentRoom.roomId
           })
         });
@@ -206,18 +203,19 @@ const ServerPage = () => {
       setMessages((prev => [...prev, newMessage]));
     });
 
-    client.current.subscribe(`/sub/video/peer/offer/${currentRoom.roomId}`, async(data) =>{
+    client.current.subscribe(`/sub/video/peer/offer/${myKey}/${currentRoom.roomId}`, async(data) =>{
       const body = JSON.parse(data.body);
       const key = body.key;
       const sdp = body.sdp;
-      console.log(sdp);
 
-      pcListMap.set(key, createPeerConnection(key));
-      await pcListMap.get(key).setRemoteDescription(new RTCSessionDescription(sdp));
-      await sendPeerAnswer(pcListMap.get(key), key);
+      await createPeerConnection(key).then(pc => {
+        pcListMap.set(key, pc);
+        pcListMap.get(key).setRemoteDescription(new RTCSessionDescription(sdp));
+        sendPeerAnswer(pcListMap.get(key), key);
+      });
     });
 
-    client.current.subscribe(`/sub/video/peer/answer/${currentRoom.roomId}`, async(data) => {
+    client.current.subscribe(`/sub/video/peer/answer/${myKey}/${currentRoom.roomId}`, async(data) => {
       try {
         const body = JSON.parse(data.body);
         const pc = pcListMap.get(body.key);
@@ -230,7 +228,7 @@ const ServerPage = () => {
       }
     });
 
-    client.current.subscribe(`/sub/video/peer/candidate/${currentRoom.roomId}`, async(data) => {
+    client.current.subscribe(`/sub/video/peer/candidate/${myKey}/${currentRoom.roomId}`, async(data) => {
       try {
         const body = JSON.parse(data.body);
         const key = body.key;
@@ -258,7 +256,7 @@ const ServerPage = () => {
     client.current.subscribe(`/sub/send/key/${currentRoom.roomId}`, async (data) => {
       const key = JSON.parse(data.body);
       
-      if(!pcListMap.has(key)) {
+      if(key !== myKey && !pcListMap.has(key)) {
         await pcListMap.set(key, createPeerConnection(key));
         sendPeerOffer(pcListMap.get(key), key);
       }
